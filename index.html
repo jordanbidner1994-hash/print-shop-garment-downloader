@@ -4,7 +4,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>Print Shop Garment Downloader</title>
 
 <style>
@@ -21,11 +20,6 @@ body {
     background: white;
     padding: 30px;
     border-radius: 12px;
-    box-shadow: 0 3px 15px rgba(0,0,0,0.1);
-}
-
-h1 {
-    margin-top: 0;
 }
 
 textarea {
@@ -35,9 +29,6 @@ textarea {
     padding: 15px;
     font-family: monospace;
     font-size: 14px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    resize: vertical;
 }
 
 button {
@@ -45,15 +36,7 @@ button {
     margin-right: 10px;
     padding: 12px 20px;
     font-size: 16px;
-    border: none;
-    border-radius: 7px;
-    background: #222;
-    color: white;
     cursor: pointer;
-}
-
-button:hover {
-    background: #444;
 }
 
 #results {
@@ -61,16 +44,14 @@ button:hover {
 }
 
 .success {
-    padding: 15px;
     background: #e7f7e7;
-    border-radius: 7px;
+    padding: 15px;
     margin-bottom: 15px;
 }
 
 .error {
-    padding: 15px;
     background: #ffe5e5;
-    border-radius: 7px;
+    padding: 15px;
 }
 
 table {
@@ -98,18 +79,15 @@ th {
 
 <h1>Print Shop Garment Downloader</h1>
 
-<p>
-Paste your YoPrint line items below.
-</p>
+<p>Paste your YoPrint line items below.</p>
 
-<textarea
-    id="input"
-    placeholder="Paste YoPrint line items here..."
-></textarea>
+<textarea id="input"></textarea>
 
 <br>
 
 <button onclick="findGarments()">Find Garments</button>
+
+<button onclick="testParser()">TEST</button>
 
 <button onclick="clearAll()">Clear</button>
 
@@ -119,198 +97,83 @@ Paste your YoPrint line items below.
 
 <script>
 
-/*
-========================================================
-PRINT SHOP GARMENT DOWNLOADER
-PARSER
-========================================================
-
-This parser is intentionally based on the actual
-YoPrint format being used.
-
-It looks for:
-
-PRODUCT:
-**Tultex291**Unisex Heavyweight Jersey Long Sleeve...
-
-SUPPLIER:
-**S&S Activewear**
-
-COLOR:
-[Black](https://...)
-
-It completely ignores:
-
-- Size
-- Quantity
-- Price
-- Totals
-- Fee rows
-- Table formatting
-- Duplicate sizes
-*/
-
-
 function findGarments() {
 
-    const input =
-        document.getElementById("input").value;
+    const text = document.getElementById("input").value;
 
-    const results =
-        document.getElementById("results");
+    parseText(text);
+
+}
+
+
+function testParser() {
+
+    const testData = `
+| **Tultex291**Unisex Heavyweight Jersey Long Sleeve T-Shirt | **S&S Activewear** | [Black](https://www.ssactivewear.com/Images/ColorSwatch/27725_fs.jpg)**BlackS** | 7 |
+| **Tultex291**Unisex Heavyweight Jersey Long Sleeve T-Shirt | **S&S Activewear** | [Black](https://www.ssactivewear.com/Images/ColorSwatch/27725_fs.jpg)**BlackM** | 5 |
+| **CORE365CE10LW**Women's Capital Performance Long Sleeve T-Shirt | **S&S Activewear** | [Forest](https://www.ssactivewear.com/Images/ColorSwatch/44819_fs.jpg)**ForestS** | 1 |
+`;
+
+    document.getElementById("input").value = testData;
+
+    parseText(testData);
+
+}
+
+
+function parseText(text) {
+
+    const results = document.getElementById("results");
 
     results.innerHTML = "";
 
-
-    if (!input.trim()) {
+    if (!text.trim()) {
 
         results.innerHTML =
-            '<div class="error">' +
-            '<strong>Please paste your YoPrint line items first.</strong>' +
-            '</div>';
+            '<div class="error">Please paste YoPrint data.</div>';
 
         return;
     }
 
 
-    /*
-    ----------------------------------------------------
-    Normalize the pasted text
-    ----------------------------------------------------
-    */
-
-    const lines =
-        input
-        .replace(/\r/g, "")
-        .split("\n");
-
+    const lines = text.split(/\r?\n/);
 
     const garments = [];
 
     const seen = new Set();
 
 
-    /*
-    ----------------------------------------------------
-    Process every line
-    ----------------------------------------------------
-    */
-
-    for (let line of lines) {
-
-        line = line.trim();
-
+    for (const line of lines) {
 
         /*
-        Ignore anything that isn't a table row.
-        */
-
-        if (!line.startsWith("|")) {
-            continue;
-        }
-
-
-        /*
-        Ignore markdown separator rows.
-        */
-
-        if (line.includes("---")) {
-            continue;
-        }
-
-
-        /*
-        Ignore fee lines.
-        */
-
-        if (
-            line.includes("Ink Change") ||
-            line.includes("Line Item Fee") ||
-            line.includes("**Fee**")
-        ) {
-            continue;
-        }
-
-
-        /*
-        ------------------------------------------------
-        FIND PRODUCT
-        ------------------------------------------------
-
-        We specifically look for:
-
-        **CODE**PRODUCT NAME
-
-        and only use the FIRST bold section.
-
-        Example:
-
-        **Tultex291**Unisex Heavyweight Jersey Long
-        Sleeve T-Shirt
+        Find product code + product name.
         */
 
         const productMatch =
-            line.match(
-                /\*\*([^*]+)\*\*\s*([^|]+?)\s*(?=\||$)/
-            );
-
+            line.match(/\*\*([^*]+)\*\*\s*([^|]+?)(?=\s*\||$)/);
 
         if (!productMatch) {
             continue;
         }
 
 
-        const code =
-            productMatch[1].trim();
+        const code = productMatch[1].trim();
 
-
-        const productName =
-            productMatch[2].trim();
+        const productName = productMatch[2].trim();
 
 
         /*
-        ------------------------------------------------
-        MAKE SURE THIS IS ACTUALLY A GARMENT
-        ------------------------------------------------
-        */
-
-        if (!code || !productName) {
-            continue;
-        }
-
-
-        /*
-        ------------------------------------------------
-        FIND SUPPLIER
-        ------------------------------------------------
+        Find supplier.
         */
 
         let supplier = "";
 
-
-        if (
-            line
-            .toLowerCase()
-            .includes("s&s activewear")
-        ) {
-
+        if (/S&S Activewear/i.test(line)) {
             supplier = "S&S Activewear";
-
         }
-        else if (
-            line
-            .toLowerCase()
-            .includes("sanmar")
-        ) {
-
+        else if (/SanMar/i.test(line)) {
             supplier = "SanMar";
         }
-
-
-        /*
-        If there isn't a supported supplier,
-        skip the line.
-        */
 
         if (!supplier) {
             continue;
@@ -318,120 +181,60 @@ function findGarments() {
 
 
         /*
-        ------------------------------------------------
-        FIND COLOR
-        ------------------------------------------------
-
-        YoPrint gives us:
-
-        [Black](https://www.ssactivewear.com/...)
-
-        We take:
-
-        Black
+        Find color from the markdown link.
         */
 
         const colorMatch =
-            line.match(
-                /\[([^\]]+)\]\(\s*https?:\/\/[^)]+\)/
-            );
-
+            line.match(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/);
 
         if (!colorMatch) {
             continue;
         }
 
-
-        const color =
-            colorMatch[1].trim();
-
-
-        if (!color) {
-            continue;
-        }
+        const color = colorMatch[1].trim();
 
 
         /*
-        ------------------------------------------------
-        DETERMINE BRAND
-        ------------------------------------------------
+        Determine brand and style.
         */
-
-        const brandList = [
-
-            {
-                name: "Tultex",
-                regex: /^Tultex/i
-            },
-
-            {
-                name: "CORE365",
-                regex: /^CORE365/i
-            },
-
-            {
-                name: "ANETIK",
-                regex: /^ANETIK/i
-            },
-
-            {
-                name: "Next Level",
-                regex: /^Next Level/i
-            },
-
-            {
-                name: "Gildan",
-                regex: /^Gildan/i
-            },
-
-            {
-                name: "Port & Company",
-                regex: /^Port & Company/i
-            },
-
-            {
-                name: "Port Authority",
-                regex: /^Port Authority/i
-            },
-
-            {
-                name: "Bella+Canvas",
-                regex: /^Bella\+Canvas/i
-            },
-
-            {
-                name: "Jerzees",
-                regex: /^Jerzees/i
-            },
-
-            {
-                name: "Hanes",
-                regex: /^Hanes/i
-            },
-
-            {
-                name: "Independent Trading Co",
-                regex: /^Independent Trading Co/i
-            }
-
-        ];
-
 
         let brand = "Unknown";
 
         let style = code;
 
 
-        for (const item of brandList) {
+        const brandPatterns = [
 
-            if (item.regex.test(code)) {
+            ["Tultex", /^Tultex/i],
 
-                brand = item.name;
+            ["CORE365", /^CORE365/i],
 
-                style =
-                    code
-                    .replace(item.regex, "")
-                    .trim();
+            ["ANETIK", /^ANETIK/i],
+
+            ["Next Level", /^Next Level/i],
+
+            ["Gildan", /^Gildan/i],
+
+            ["Port & Company", /^Port & Company/i],
+
+            ["Port Authority", /^Port Authority/i],
+
+            ["Bella+Canvas", /^Bella\+Canvas/i],
+
+            ["Jerzees", /^Jerzees/i],
+
+            ["Hanes", /^Hanes/i]
+
+        ];
+
+
+        for (const [name, pattern] of brandPatterns) {
+
+            if (pattern.test(code)) {
+
+                brand = name;
+
+                style = code.replace(pattern, "").trim();
 
                 break;
             }
@@ -439,22 +242,7 @@ function findGarments() {
 
 
         /*
-        ------------------------------------------------
-        UNIQUE KEY
-        ------------------------------------------------
-
-        Same garment in different sizes becomes ONE.
-
-        Example:
-
-        Tultex 291 Black S
-        Tultex 291 Black M
-        Tultex 291 Black L
-        Tultex 291 Black XL
-
-        becomes:
-
-        Tultex 291 Black
+        Remove duplicate sizes.
         */
 
         const key =
@@ -475,19 +263,13 @@ function findGarments() {
         seen.add(key);
 
 
-        /*
-        ------------------------------------------------
-        SAVE GARMENT
-        ------------------------------------------------
-        */
-
         garments.push({
 
             brand: brand,
 
             style: style,
 
-            productName: productName,
+            product: productName,
 
             color: color,
 
@@ -499,125 +281,59 @@ function findGarments() {
 
 
     /*
-    ====================================================
-    SHOW RESULTS
-    ====================================================
+    Show result.
     */
-
 
     if (garments.length === 0) {
 
         results.innerHTML =
-
             '<div class="error">' +
-
-            '<strong>No garments detected.</strong>' +
-
-            '<br><br>' +
-
-            'The pasted YoPrint information did not ' +
-            'contain a recognizable garment row.' +
-
+            '<strong>NO GARMENTS DETECTED</strong>' +
             '</div>';
 
         return;
     }
 
 
-    /*
-    ----------------------------------------------------
-    Success message
-    ----------------------------------------------------
-    */
-
     let html =
-
         '<div class="success">' +
-
         '<strong>' +
-
         garments.length +
-
-        ' unique garment/color combinations found.</strong>' +
-
+        ' unique garment/color combinations found.' +
+        '</strong>' +
         '</div>';
 
 
-    /*
-    ----------------------------------------------------
-    Results table
-    ----------------------------------------------------
-    */
-
-    html +=
-
-        '<table>' +
-
-        '<thead>' +
-
-        '<tr>' +
-
-        '<th>#</th>' +
-
-        '<th>Brand</th>' +
-
-        '<th>Style</th>' +
-
-        '<th>Product</th>' +
-
-        '<th>Color</th>' +
-
-        '<th>Supplier</th>' +
-
-        '</tr>' +
-
-        '</thead>' +
-
-        '<tbody>';
+    html += `
+<table>
+<tr>
+<th>#</th>
+<th>Brand</th>
+<th>Style</th>
+<th>Product</th>
+<th>Color</th>
+<th>Supplier</th>
+</tr>
+`;
 
 
-    garments.forEach(
-        function(garment, index) {
+    garments.forEach((g, i) => {
 
-            html +=
+        html += `
+<tr>
+<td>${i + 1}</td>
+<td>${escapeHtml(g.brand)}</td>
+<td>${escapeHtml(g.style)}</td>
+<td>${escapeHtml(g.product)}</td>
+<td>${escapeHtml(g.color)}</td>
+<td>${escapeHtml(g.supplier)}</td>
+</tr>
+`;
 
-                '<tr>' +
-
-                '<td>' +
-                (index + 1) +
-                '</td>' +
-
-                '<td>' +
-                escapeHtml(garment.brand) +
-                '</td>' +
-
-                '<td>' +
-                escapeHtml(garment.style) +
-                '</td>' +
-
-                '<td>' +
-                escapeHtml(garment.productName) +
-                '</td>' +
-
-                '<td>' +
-                escapeHtml(garment.color) +
-                '</td>' +
-
-                '<td>' +
-                escapeHtml(garment.supplier) +
-                '</td>' +
-
-                '</tr>';
-
-        }
-    );
+    });
 
 
-    html +=
-
-        '</tbody>' +
-
-        '</table>';
+    html += "</table>";
 
 
     results.innerHTML = html;
@@ -625,28 +341,16 @@ function findGarments() {
 }
 
 
-/*
-========================================================
-SECURITY
-========================================================
-*/
-
 function escapeHtml(text) {
 
-    const div =
-        document.createElement("div");
+    const div = document.createElement("div");
 
     div.textContent = text;
 
     return div.innerHTML;
+
 }
 
-
-/*
-========================================================
-CLEAR
-========================================================
-*/
 
 function clearAll() {
 
