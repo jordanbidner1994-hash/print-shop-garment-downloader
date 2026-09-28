@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Print Shop Garment Downloader</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f2f2f2;
+    margin: 0;
+    padding: 30px;
+}
+
+.container {
+    max-width: 1000px;
+    margin: auto;
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+}
+
+h1 {
+    margin-top: 0;
+}
+
+textarea {
+    width: 100%;
+    height: 300px;
+    box-sizing: border-box;
+    padding: 15px;
+    font-family: monospace;
+    font-size: 14px;
+}
+
+button {
+    margin-top: 15px;
+    padding: 12px 20px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+#results {
+    margin-top: 25px;
+}
+
+.success {
+    padding: 15px;
+    background: #e7f7e7;
+    margin-bottom: 15px;
+}
+
+.error {
+    padding: 15px;
+    background: #ffe5e5;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Print Shop Garment Downloader</h1>
+
+<p>Paste your YoPrint line items below.</p>
+
+<textarea id="input" placeholder="Paste YoPrint line items here..."></textarea>
+
+<br>
+
+<button onclick="findGarments()">Find Garments</button> <button onclick="clearAll()">Clear</button>
+
+<div id="results"></div>
+
+</div>
+
+<script>
+
+function findGarments() {
+
+    const input = document.getElementById("input").value;
+    const results = document.getElementById("results");
+
+    results.innerHTML = "";
+
+    if (!input.trim()) {
+        results.innerHTML =
+            '<div class="error">Paste your YoPrint line items first.</div>';
+        return;
+    }
+
+    const lines = input.split(/\r?\n/);
+
+    const garments = [];
+    const seen = new Set();
+
+    for (const line of lines) {
+
+        // Only look at actual table rows
+        if (!line.trim().startsWith("|")) {
+            continue;
+        }
+
+        // Ignore table separator
+        if (line.includes("---")) {
+            continue;
+        }
+
+        // Ignore fees
+        if (
+            line.includes("Ink Change") ||
+            line.includes("Line Item Fee")
+        ) {
+            continue;
+        }
+
+        /*
+         * PRODUCT
+         *
+         * Example:
+         *
+         * **Tultex291**Unisex Heavyweight Jersey Long Sleeve T-Shirt
+         */
+
+        const productMatch =
+            line.match(/\*\*([^*]+)\*\*([^|]+)/);
+
+        if (!productMatch) {
+            continue;
+        }
+
+        const code = productMatch[1].trim();
+        const productName = productMatch[2].trim();
+
+        /*
+         * SUPPLIER
+         */
+
+        let supplier = "";
+
+        if (line.includes("S&S Activewear")) {
+            supplier = "S&S Activewear";
+        }
+        else if (line.includes("SanMar")) {
+            supplier = "SanMar";
+        }
+
+        if (!supplier) {
+            continue;
+        }
+
+        /*
+         * COLOR
+         *
+         * YoPrint gives us:
+         *
+         * [Black](https://...)
+         *
+         * We take "Black".
+         */
+
+        const colorMatch =
+            line.match(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/);
+
+        if (!colorMatch) {
+            continue;
+        }
+
+        const color = colorMatch[1].trim();
+
+        /*
+         * BRAND
+         */
+
+        let brand = "Unknown";
+        let style = code;
+
+        const brands = [
+            ["Tultex", /^Tultex/i],
+            ["CORE365", /^CORE365/i],
+            ["ANETIK", /^ANETIK/i],
+            ["Next Level", /^Next Level/i],
+            ["Gildan", /^Gildan/i],
+            ["Port & Company", /^Port & Company/i],
+            ["Port Authority", /^Port Authority/i],
+            ["Bella+Canvas", /^Bella\+Canvas/i],
+            ["Jerzees", /^Jerzees/i],
+            ["Hanes", /^Hanes/i]
+        ];
+
+        for (const item of brands) {
+
+            if (item[1].test(code)) {
+
+                brand = item[0];
+                style = code.replace(item[1], "").trim();
+
+                break;
+            }
+        }
+
+        /*
+         * UNIQUE GARMENT
+         *
+         * Sizes are ignored.
+         */
+
+        const key =
+            brand.toLowerCase() +
+            "|" +
+            style.toLowerCase() +
+            "|" +
+            color.toLowerCase() +
+            "|" +
+            supplier.toLowerCase();
+
+        if (seen.has(key)) {
+            continue;
+        }
+
+        seen.add(key);
+
+        garments.push({
+            brand,
+            style,
+            productName,
+            color,
+            supplier
+        });
+    }
+
+    /*
+     * SHOW RESULTS
+     */
+
+    if (garments.length === 0) {
+
+        results.innerHTML =
+            '<div class="error"><strong>No garments detected.</strong><br><br>' +
+            'The parser did not recognize the pasted YoPrint data.</div>';
+
+        return;
+    }
+
+    let html =
+        '<div class="success"><strong>' +
+        garments.length +
+        ' unique garment/color combinations found.</strong></div>';
+
+    html += "<table border='1' cellpadding='10' cellspacing='0' width='100%'>";
+
+    html +=
+        "<tr>" +
+        "<th>Brand</th>" +
+        "<th>Style</th>" +
+        "<th>Product</th>" +
+        "<th>Color</th>" +
+        "<th>Supplier</th>" +
+        "</tr>";
+
+    for (const garment of garments) {
+
+        html +=
+            "<tr>" +
+            "<td>" + garment.brand + "</td>" +
+            "<td>" + garment.style + "</td>" +
+            "<td>" + garment.productName + "</td>" +
+            "<td>" + garment.color + "</td>" +
+            "<td>" + garment.supplier + "</td>" +
+            "</tr>";
+    }
+
+    html += "</table>";
+
+    results.innerHTML = html;
+}
+
+
+function clearAll() {
+
+    document.getElementById("input").value = "";
+
+    document.getElementById("results").innerHTML = "";
+}
+
+</script>
+
+</body>
+</html>
